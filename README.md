@@ -46,7 +46,10 @@ The `apiKey` in `vote/firebase.js` is a public identifier, not a password. The r
 
 1. **Before:** in the host page, type each candidate's name into their role's card. Generate one code per expected member, then **Print new batch** and cut the slips.
 2. **At the door:** hand each member one slip at random. The screen shows a QR code to `…/vote`.
-3. **Each position runs in three steps.** The Live panel shows which one you're on:
+3. **The Constitutional Amendment goes first.** Press **Present motion**: the screen and phones show the two
+   Clause 11 changes. Press **Open voting** when discussion is done; phones show For / Against. It passes with at
+   more than 50% For (a tie fails), and the screen shows Passed or Not passed with the split.
+4. **Then each role runs in three steps.** The Live panel shows which one you're on:
    - **Speeches:** press **Start speeches**. The screen shows the role and the candidates; tap a name under
      "Who's speaking?" to put that person's name up big. Phones show the candidates but can't vote yet.
      Floor nominations go in here.
@@ -54,14 +57,15 @@ The `apiKey` in `vote/firebase.js` is a public identifier, not a password. The r
      by themselves. If someone's left the room, press **Close voting and show results** instead.
    - **Results:** the screen and phones show "Congratulations" and the winner with confetti, plus the vote breakdown.
      Press **Next: start speeches** for the next position.
-4. **Ties or mistakes:** **Re-run this vote** deletes that position's votes and takes it back to speeches
+5. **Ties or mistakes:** **Re-run this vote** deletes that position's votes and takes it back to speeches
    (remove candidates first if it's a run-off).
-5. **Phone died:** release their code under Codes → Release a code, and they can enter it on another device.
+6. **Phone died:** release their code under Codes → Release a code, and they can enter it on another device.
    Votes they already cast stay counted and can't be cast twice.
-6. **After a practice run:** Reset → Clear all votes (or clear codes too, if you printed test slips).
+7. **After a practice run:** Reset → Clear all votes (or clear codes too, if you printed test slips).
 
-The five roles are fixed in `vote/host.js` (`ROLES`), in this order: President, Vice President - Events,
-Vice President - Marketing, Treasurer, Secretary.
+The agenda is fixed in `vote/host.js` (`ROLES`), in this order: the Constitutional Amendment (Clause 11, special
+resolution, more than 50% For to pass), then President, Vice President - Events, Vice President - Marketing, Treasurer, Secretary.
+The motion's wording and threshold live there too.
 
 Results show the most votes as "Elected" and flag ties. Check this against the constitution's rules for majorities and uncontested positions.
 For a yes/no vote on a single candidate, add a second candidate called "No" or "Re-open nominations".

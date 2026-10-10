@@ -75,6 +75,18 @@ export function tally(contest, votes) {
   return { rows, valid, max, leaders, winner: leaders.length === 1 ? leaders[0] : null };
 }
 
+// ---- Motions (special resolutions): For / Against with a pass threshold ----
+export const isMotion = c => c?.kind === "motion";
+export const motionPoints = c => String(c?.description || "").split("\n").filter(Boolean);
+export const pct = x => Math.round(x * 100) + "%";
+export function motionResult(contest, votes) {
+  let yes = 0, no = 0;
+  for (const v of Object.values(votes || {})) { if (v === "for") yes++; else if (v === "against") no++; }
+  const total = yes + no, threshold = contest?.threshold ?? 0.5;
+  const share = total ? yes / total : 0;
+  return { yes, no, total, share, threshold, passed: total > 0 && share > threshold };   // a tie fails
+}
+
 // ---- Access-code gate shared by the host and screen pages ----
 // Execs unlock a page with a passphrase of 3+ words stored under hostKeys in the database
 // (which no client can read). The rules check it on every request, so deleting it in the

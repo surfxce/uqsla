@@ -1,7 +1,7 @@
 // Attendee page: check in with a code, vote on whichever position is open, then wait.
 import {
   auth, db, onAuthStateChanged, signInAnonymously, ref, get, set, onValue,
-  CODE_RE, normalizeCode, formatCode, esc, sortedCandidates, isPermissionDenied
+  CODE_RE, normalizeCode, formatCode, esc, sortedCandidates, isPermissionDenied, isMotion, motionPoints, pct
 } from "./firebase.js";
 import { confetti } from "./confetti.js";
 
@@ -140,7 +140,19 @@ function render() {
   screenBallot();
 }
 
+const motionBox = c => `<ul class="motion-box">${motionPoints(c).map(p => `<li>${esc(p)}</li>`).join("")}</ul>`;
+
 function screenSpeeches() {
+  if (isMotion(S.contest)) {
+    return show(`
+      <section class="screen center">
+        <p class="eyebrow">Up next · Special resolution</p>
+        <h1 class="contest-title">${esc(S.contest.title)}</h1>
+        ${motionBox(S.contest)}
+        <p class="hint">Voting opens on this page once the motion has been presented. It needs more than ${pct(S.contest.threshold ?? 0.5)} of votes For to pass.</p>
+        ${codeChip()}
+      </section>`);
+  }
   const speaker = S.state.speaker;
   show(`
     <section class="screen center">
@@ -157,6 +169,22 @@ function screenSpeeches() {
 
 function screenResult() {
   const c = S.contest;
+  if (isMotion(c)) {
+    if (c.winner === "passed") {
+      show(`
+        <section class="screen center">
+          <p class="eyebrow">Special resolution</p>
+          <p class="congrats-line">Passed</p>
+          <h1 class="contest-title">${esc(c.title)}</h1>
+          <p class="hint">${S.myVote ? "Your vote was counted. " : ""}The amendment was approved. The next vote will appear here when it's called.</p>
+          ${codeChip()}
+        </section>`);
+      if (S.celebrated !== watching) { S.celebrated = watching; confetti({ count: 90 }); }
+      return;
+    }
+    return screenWait(c.winner === "failed" ? "The amendment didn't pass" : `Voting on the ${c.title.toLowerCase()} has closed`,
+      "Results are on the main screen. The next vote will appear here when it's called.");
+  }
   const winner = sortedCandidates(c).find(k => k.id === c.winner);
   if (winner) {
     show(`
@@ -243,7 +271,8 @@ function screenBallot() {
     <section class="screen">
       <p class="eyebrow"><span class="live-dot"></span>Now voting</p>
       <h1 class="contest-title">${esc(c.title)}</h1>
-      <p class="hint">Choose one. You can't change your vote after you submit it.</p>
+      ${isMotion(c) ? motionBox(c) : ""}
+      <p class="hint">${isMotion(c) ? `Vote For or Against. It needs more than ${pct(c.threshold ?? 0.5)} For to pass. ` : "Choose one. "}You can't change your vote after you submit it.</p>
       <div class="choices" role="radiogroup" aria-label="${esc(c.title)}">
         ${cands.length ? cands.map(k => option(k.id, k.name)).join("") : `<p class="empty">Candidates are being added…</p>`}
       </div>

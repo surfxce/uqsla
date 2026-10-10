@@ -35,6 +35,9 @@
         "order": { ".validate": "newData.isNumber()" },
         "status": { ".validate": "newData.isString() && newData.val().matches(/^(pending|speeches|open|closed|revealed)$/)" },
         "winner": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{1,40}$/)" },
+        "kind": { ".validate": "newData.val() === 'motion'" },
+        "description": { ".validate": "newData.isString() && newData.val().length <= 1000" },
+        "threshold": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 1" },
         "candidates": {
           "$cand": {
             ".validate": "newData.hasChild('name')",

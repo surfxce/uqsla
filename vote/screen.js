@@ -1,6 +1,7 @@
 // Projector screen: welcome + check-in QR, speeches, voting, then congratulations + results.
 import {
-  db, ref, onValue, accessGate, esc, count, voteUrl, voteUrlText, sortedCandidates, tally
+  db, ref, onValue, accessGate, esc, count, voteUrl, voteUrlText, sortedCandidates, tally,
+  isMotion, motionPoints, motionResult, pct
 } from "./firebase.js";
 import { confetti } from "./confetti.js";
 
@@ -34,7 +35,21 @@ function render() {
   const c = cur ? D.contests[cur] : null;
 
   let sig, html, celebrate = false;
-  if (phase === "speeches") {
+  const points = () => `<ul class="s-points">${motionPoints(c).map(p => `<li>${esc(p)}</li>`).join("")}</ul>`;
+  if (phase === "speeches" && isMotion(c)) {
+    sig = JSON.stringify(["motion", cur, c.title, c.description]);
+    html = `
+      <header class="s-head">${lockup("sm")}<span class="s-pill">Special resolution</span></header>
+      <div class="s-body">
+        <div class="s-main">
+          <p class="eyebrow">Up next · Special resolution</p>
+          <h1 class="s-title">${esc(c.title)}</h1>
+          ${points()}
+          <p class="s-sub">Needs more than ${pct(c.threshold ?? 0.5)} of votes For to pass. Voting opens on your phone after the motion is presented.</p>
+        </div>
+        <aside class="s-side">${qrCard()}<p class="url">${esc(voteUrlText())}</p><p class="muted">Not checked in? Scan now.</p></aside>
+      </div>`;
+  } else if (phase === "speeches") {
     const cands = sortedCandidates(c);
     const speaker = cands.find(k => k.id === D.state.speaker);
     sig = JSON.stringify(["speeches", cur, c.title, cands.map(k => k.name), speaker?.id]);
@@ -62,9 +77,9 @@ function render() {
       <header class="s-head">${lockup("sm")}<span class="s-pill is-open"><span class="live-dot"></span>Voting open</span></header>
       <div class="s-body">
         <div class="s-main">
-          <p class="eyebrow">Now voting</p>
+          <p class="eyebrow">Now voting${isMotion(c) ? " · Special resolution" : ""}</p>
           <h1 class="s-title">${esc(c.title)}</h1>
-          <ul class="s-cands">${names.map(n => `<li>${esc(n)}</li>`).join("")}</ul>
+          ${isMotion(c) ? points() : `<ul class="s-cands">${names.map(n => `<li>${esc(n)}</li>`).join("")}</ul>`}
         </div>
         <aside class="s-side">${qrCard()}<p class="url">${esc(voteUrlText())}</p><p class="muted">Not checked in? Scan to vote.</p></aside>
       </div>
@@ -80,6 +95,20 @@ function render() {
           <h1 class="s-title">Voting closed</h1>
           <p class="s-sub"><b data-bind="cast">0</b> votes cast. Results coming up.</p>
         </div>
+      </div>`;
+  } else if (phase === "revealed" && isMotion(c)) {
+    const m = motionResult(c, D.votes[cur]);
+    sig = JSON.stringify(["motion-result", cur, c.title, m.yes, m.no]);
+    celebrate = m.passed;
+    html = `
+      <header class="s-head">${lockup("sm")}<span class="s-pill">Result</span></header>
+      <div class="s-results">
+        <div class="s-hero">
+          <p class="eyebrow">Special resolution · ${esc(c.title)}</p>
+          ${m.passed ? `<p class="congrats-line">Passed</p>` : `<h1 class="s-title">${m.total ? "Not passed" : "No votes"}</h1>`}
+          <p class="s-sub">${m.total ? `${pct(m.share)} voted For. It needed more than ${pct(m.threshold)}.` : "No votes were cast."}</p>
+        </div>
+        ${m.total ? motionChartHtml(m) : ""}
       </div>`;
   } else if (phase === "revealed") {
     const t = tally(c, D.votes[cur]);
@@ -146,6 +175,21 @@ function updateNumbers(cur) {
     el.style.width = (checked ? Math.min(100, cast / checked * 100) : 0) + "%";
   });
   stage.querySelectorAll('[data-bind="allin"]').forEach(el => { el.hidden = !(checked > 0 && cast >= checked); });
+}
+
+// For / Against as shares of all votes, with a dashed marker at the pass threshold
+function motionChartHtml(m) {
+  const row = (label, n, lead, i) => `
+    <div class="bar-row ${lead ? "is-lead" : ""}" style="--w:${n / m.total * 100}%;--d:${(i * 0.12).toFixed(2)}s">
+      <div class="bar-name">${label}</div>
+      <div class="bar-track has-threshold" style="--t:${m.threshold * 100}%"><div class="bar"></div></div>
+      <div class="bar-val">${n}<span>${pct(n / m.total)}</span></div>
+    </div>`;
+  return `
+    <div class="chart compact" role="img" aria-label="${esc(`For ${m.yes}, Against ${m.no}. ${pct(m.share)} For, needed more than ${pct(m.threshold)}.`)}">
+      ${row("For", m.yes, m.passed, 0)}${row("Against", m.no, false, 1)}
+    </div>
+    <p class="chart-note">${m.total} vote${m.total === 1 ? "" : "s"} · dashed line marks ${pct(m.threshold)}</p>`;
 }
 
 function chartHtml(c, t) {

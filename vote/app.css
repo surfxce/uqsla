@@ -638,3 +638,31 @@ body.screen-page.hide-cursor { cursor: none; }
 .role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .role-title { flex: 1; min-width: 0; font-size: 17px; letter-spacing: 0.04em; line-height: 1.2; }
 .contest .cands { padding-left: 0; }
+
+/* ---- Constitutional amendment (special resolution) ---- */
+.motion-points { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); font-size: 14px; }
+.contest.is-motion { border-color: rgba(232, 176, 75, 0.35); }
+.motion-box {
+  width: 100%;
+  margin: 4px 0;
+  padding: 14px 16px 14px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--bg-raised);
+  color: var(--ink-2);
+  font-size: 16px;
+  text-align: left;
+}
+.s-points { margin: 0.8em 0 0; padding-left: 1.2em; max-width: 46em; display: flex; flex-direction: column; gap: 0.6em; font-size: 1.35em; color: var(--ink-2); line-height: 1.35; }
+.bar-track.has-threshold { position: relative; }
+.bar-track.has-threshold::after {
+  content: "";
+  position: absolute;
+  top: -0.3em;
+  bottom: -0.3em;
+  left: var(--t);
+  border-left: 2px dashed var(--ink-2);
+}
