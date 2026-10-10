@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#081729">
+<meta name="robots" content="noindex">
+<title>UQSLA AGM · Host</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="gate"></div>
+
+  <div id="main" hidden>
+    <header class="host-top">
+      <img class="lion" src="../logo.png" alt="" width="40" height="40">
+      <span class="topbar-title">UQSLA <b>AGM</b> · Host</span>
+      <span class="spacer"></span>
+      <nav class="links">
+        <a class="btn btn-sm" id="screenLink" target="_blank" rel="noopener">Open screen view ↗</a>
+        <a class="btn btn-sm" id="voteLink" target="_blank" rel="noopener">Attendee page ↗</a>
+        <button class="btn btn-sm" id="signOut">Lock</button>
+      </nav>
+    </header>
+
+    <div class="host-grid">
+      <div class="host-col">
+        <section class="panel live" id="live" aria-label="Live control"></section>
+      </div>
+      <div class="host-col">
+        <section class="panel" id="contests" aria-label="Positions"></section>
+        <section class="panel" id="codes" aria-label="Codes"></section>
+        <section class="panel danger-zone">
+          <h2>Reset</h2>
+          <p class="small muted">Use these after a practice run. Positions and candidates are always kept.</p>
+          <div class="row-actions">
+            <button class="btn btn-sm btn-danger" data-action="resetVotes">Clear all votes</button>
+            <button class="btn btn-sm btn-danger" data-action="resetAll">Clear votes, codes and check-ins</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="print" class="print-sheet"></div>
+  <script type="module" src="host.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#081729">
+<title>UQSLA AGM · Vote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="lion" src="../logo.png" alt="" width="34" height="34">
+    <span class="topbar-title">UQSLA <b>AGM</b></span>
+    <span class="net" id="net" hidden>Reconnecting…</span>
+  </header>
+  <main class="voter-main" id="app" aria-live="polite">
+    <div class="spinner" aria-label="Loading"></div>
+  </main>
+  <script type="module" src="voter.js"></script>
+</body>
+</html>
