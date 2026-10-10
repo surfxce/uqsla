@@ -20,8 +20,9 @@
       ".read": true,
       ".write": "auth != null && root.child('sessions').child(auth.uid).child('key').exists() && root.child('hostKeys').child(root.child('sessions').child(auth.uid).child('key').val()).val() === 'host'",
       ".validate": "newData.hasChild('phase')",
-      "phase": { ".validate": "newData.isString() && newData.val().matches(/^(idle|open|closed|revealed)$/)" },
+      "phase": { ".validate": "newData.isString() && newData.val().matches(/^(idle|speeches|open|closed|revealed)$/)" },
       "current": { ".validate": "newData.isString()" },
+      "speaker": { ".validate": "newData.isString()" },
       "$other": { ".validate": false }
     },
 
@@ -33,7 +34,8 @@
         "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
         "order": { ".validate": "newData.isNumber()" },
         "allowAbstain": { ".validate": "newData.isBoolean()" },
-        "status": { ".validate": "newData.isString() && newData.val().matches(/^(pending|open|closed|revealed)$/)" },
+        "status": { ".validate": "newData.isString() && newData.val().matches(/^(pending|speeches|open|closed|revealed)$/)" },
+        "winner": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{1,40}$/)" },
         "candidates": {
           "$cand": {
             ".validate": "newData.hasChild('name')",

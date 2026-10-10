@@ -1,7 +1,8 @@
-// Projector screen: welcome + check-in QR, the open position, then the results chart.
+// Projector screen: welcome + check-in QR, speeches, voting, then congratulations + results.
 import {
   db, ref, onValue, accessGate, esc, count, voteUrl, voteUrlText, sortedCandidates, tally
 } from "./firebase.js";
+import { confetti } from "./confetti.js";
 
 const stage = document.getElementById("stage");
 const D = { state: { phase: "idle" }, contests: {}, votes: {}, claims: {} };
@@ -32,8 +33,29 @@ function render() {
   const phase = cur ? D.state.phase || "idle" : "idle";
   const c = cur ? D.contests[cur] : null;
 
-  let sig, html;
-  if (phase === "open") {
+  let sig, html, celebrate = false;
+  if (phase === "speeches") {
+    const cands = sortedCandidates(c);
+    const speaker = cands.find(k => k.id === D.state.speaker);
+    sig = JSON.stringify(["speeches", cur, c.title, cands.map(k => k.name), speaker?.id]);
+    const others = cands.filter(k => k !== speaker);
+    html = `
+      <header class="s-head">${lockup("sm")}<span class="s-pill">Candidate speeches</span></header>
+      <div class="s-body">
+        <div class="s-main">
+          ${speaker ? `
+            <p class="eyebrow">Candidate for</p>
+            <p class="s-role">${esc(c.title)}</p>
+            <h1 class="s-speaker">${esc(speaker.name)}</h1>
+            ${others.length ? `<p class="s-also">Also standing: ${others.map(k => esc(k.name)).join(" · ")}</p>` : ""}` : `
+            <p class="eyebrow">Up next</p>
+            <h1 class="s-title">${esc(c.title)}</h1>
+            <ul class="s-cands">${cands.map(k => `<li>${esc(k.name)}</li>`).join("")}</ul>
+            <p class="s-sub">Candidate speeches, then voting opens on your phone.</p>`}
+        </div>
+        <aside class="s-side">${qrCard()}<p class="url">${esc(voteUrlText())}</p><p class="muted">Not checked in? Scan now.</p></aside>
+      </div>`;
+  } else if (phase === "open") {
     const names = sortedCandidates(c).map(k => k.name);
     sig = JSON.stringify(["open", cur, c.title, names]);
     html = `
@@ -46,6 +68,7 @@ function render() {
         </div>
         <aside class="s-side">${qrCard()}<p class="url">${esc(voteUrlText())}</p><p class="muted">Not checked in? Scan to vote.</p></aside>
       </div>
+      <p class="s-allin" data-bind="allin" hidden>All votes are in</p>
       ${turnoutHtml()}`;
   } else if (phase === "closed") {
     sig = JSON.stringify(["closed", cur, c.title]);
@@ -60,15 +83,22 @@ function render() {
       </div>`;
   } else if (phase === "revealed") {
     const t = tally(c, D.votes[cur]);
+    const winner = t.rows.find(r => r.id === t.winner);
     sig = JSON.stringify(["revealed", cur, c.title, t.rows, t.abstain]);
+    celebrate = !!winner;
+    const hero = winner ? `
+      <p class="eyebrow">${esc(c.title)} · Elected</p>
+      <p class="congrats-line">Congratulations</p>
+      <h1 class="congrats-name">${esc(winner.name)}</h1>` : t.leaders.length > 1 ? `
+      <p class="eyebrow">${esc(c.title)}</p>
+      <h1 class="s-title">It's a tie</h1>` : `
+      <p class="eyebrow">Results</p>
+      <h1 class="s-title">${esc(c.title)}</h1>`;
     html = `
       <header class="s-head">${lockup("sm")}<span class="s-pill">Results</span></header>
-      <div class="s-body">
-        <div class="s-main">
-          <p class="eyebrow">Results</p>
-          <h1 class="s-title">${esc(c.title)}</h1>
-          ${chartHtml(c, t)}
-        </div>
+      <div class="s-results">
+        <div class="s-hero">${hero}</div>
+        ${chartHtml(c, t)}
       </div>`;
   } else {
     sig = "idle";
@@ -90,6 +120,7 @@ function render() {
   if (sig !== signature) {
     signature = sig;
     stage.innerHTML = html;
+    if (celebrate) confetti();
     stage.querySelectorAll("[data-qr]").forEach(el => {
       if (window.QRCode) new QRCode(el, { text: voteUrl(), width: 480, height: 480, colorDark: "#081729", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
     });
@@ -114,6 +145,7 @@ function updateNumbers(cur) {
   stage.querySelectorAll('[data-bind="bar"]').forEach(el => {
     el.style.width = (checked ? Math.min(100, cast / checked * 100) : 0) + "%";
   });
+  stage.querySelectorAll('[data-bind="allin"]').forEach(el => { el.hidden = !(checked > 0 && cast >= checked); });
 }
 
 function chartHtml(c, t) {
@@ -138,7 +170,7 @@ function chartHtml(c, t) {
     </div>` : "";
   const label = t.rows.map(r => `${r.name} ${r.n}`).join(", ") + (t.abstain ? `, abstain ${t.abstain}` : "");
   return `
-    <div class="chart" role="img" aria-label="${esc(`Results for ${c.title}: ${label}`)}">${rows}${abstain}</div>
+    <div class="chart compact" role="img" aria-label="${esc(`Results for ${c.title}: ${label}`)}">${rows}${abstain}</div>
     <p class="chart-note">${t.valid} vote${t.valid === 1 ? "" : "s"} for candidates${t.abstain ? ` · ${t.abstain} abstained` : ""} · percentages exclude abstentions</p>`;
 }
 

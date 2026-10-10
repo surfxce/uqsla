@@ -1,21 +1,34 @@
 // Host page: run the AGM one position at a time, manage candidates and voting codes.
 import {
-  db, ref, update, remove, push, onValue, accessGate, signOutAndReload,
+  db, ref, get, update, remove, push, onValue, accessGate, signOutAndReload,
   randomCode, normalizeCode, formatCode, CODE_RE, esc, count, withParams, voteUrlText,
-  sortedContests, sortedCandidates, tally
+  sortedContests, sortedCandidates, tally, isPermissionDenied
 } from "./firebase.js";
 
 const $ = s => document.querySelector(s);
 const D = { state: { phase: "idle" }, contests: {}, votes: {}, codes: {}, claims: {} };
 let lastBatch = [];
 
+// The positions are fixed by the constitution, always run in this order
+const ROLES = [
+  { id: "president", title: "President" },
+  { id: "vp-events", title: "Vice President - Events" },
+  { id: "vp-marketing", title: "Vice President - Marketing" },
+  { id: "treasurer", title: "Treasurer" },
+  { id: "secretary", title: "Secretary" }
+];
+
 accessGate($("#gate"), "host", () => {
   $("#main").hidden = false;
   $("#screenLink").href = withParams("screen.html");
   $("#voteLink").href = withParams("./");
   $("#signOut").onclick = signOutAndReload;
-  const sub = (key, fallback) => onValue(ref(db, key), s => { D[key] = s.val() || fallback; render(); },
-    e => toast(`Couldn't load ${key}: ${e.message}`, true));
+  let rolesChecked = false;
+  const sub = (key, fallback) => onValue(ref(db, key), s => {
+    D[key] = s.val() || fallback;
+    if (key === "contests" && !rolesChecked) { rolesChecked = true; ensureRoles(); }
+    render();
+  }, e => toast(`Couldn't load ${key}: ${e.message}`, true));
   sub("state", { phase: "idle" });
   sub("contests", {});
   sub("votes", {});
@@ -23,19 +36,56 @@ accessGate($("#gate"), "host", () => {
   sub("claims", {});
 });
 
+// Make sure the five roles exist with the right titles and order. Any other position (from
+// before the roles were fixed) is removed, keeping its candidates if it has the same name.
+async function ensureRoles() {
+  const norm = s => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
+  const strays = Object.entries(D.contests).filter(([id]) => !ROLES.some(r => r.id === id));
+  const u = {};
+  ROLES.forEach((r, i) => {
+    const existing = D.contests[r.id];
+    if (!existing) {
+      const match = strays.find(([, c]) => norm(c.title) === norm(r.title));
+      u[`contests/${r.id}`] = { title: r.title, order: i + 1, allowAbstain: true, status: "pending",
+        ...(match?.[1].candidates ? { candidates: match[1].candidates } : {}) };
+    } else {
+      if (existing.title !== r.title) u[`contests/${r.id}/title`] = r.title;
+      if (existing.order !== i + 1) u[`contests/${r.id}/order`] = i + 1;
+    }
+  });
+  for (const [id] of strays) { u[`contests/${id}`] = null; u[`votes/${id}`] = null; }
+  if (!Object.keys(u).length) return;
+  const current = (await get(ref(db, "state/current")).catch(() => null))?.val();
+  if (current && strays.some(([id]) => id === current)) u.state = { phase: "idle" };
+  run(() => update(ref(db), u));
+}
+
 // ---- Derived state ----
 const currentId = () => (D.state.current && D.contests[D.state.current] ? D.state.current : null);
 const phaseOf = () => (currentId() ? D.state.phase || "idle" : "idle");
 const statusOf = c => c.status || "pending";
 const nextPending = () => sortedContests(D.contests).find(c => c.id !== currentId() && statusOf(c) === "pending");
 const votesFor = id => count(D.votes[id]);
-const STATUS = { pending: "Not started", open: "Voting open", closed: "Closed", revealed: "Results shown" };
+const STATUS = { pending: "Not started", speeches: "Speeches", open: "Voting", closed: "Closed", revealed: "Results shown" };
 
 // ---- Rendering (inputs keep their text and focus across live updates) ----
 function render() {
   rerender($("#live"), liveHtml());
   rerender($("#contests"), contestsHtml());
   rerender($("#codes"), codesHtml());
+  autoAdvance();
+}
+
+// Once everyone checked in has voted, wait a moment, then show the results automatically
+let autoTimer = null;
+function autoAdvance() {
+  const cur = currentId();
+  const allIn = () => phaseOf() === "open" && currentId() === cur && count(D.claims) > 0 && votesFor(cur) >= count(D.claims);
+  if (!allIn() || autoTimer) return;
+  autoTimer = setTimeout(() => {
+    autoTimer = null;
+    if (allIn()) actions.reveal();
+  }, 2500);
 }
 
 function rerender(el, html) {
@@ -57,115 +107,164 @@ function rerender(el, html) {
 }
 
 function liveHtml() {
+  const list = sortedContests(D.contests);
   const cur = currentId();
   const phase = phaseOf();
   const c = cur ? D.contests[cur] : null;
   const checked = count(D.claims);
   const cast = cur ? votesFor(cur) : 0;
   const next = nextPending();
-  const pct = checked ? Math.min(100, Math.round(cast / checked * 100)) : 0;
-  const label = { idle: "Waiting screen", open: "Voting open", closed: "Voting closed", revealed: "Results on screen" }[phase];
+  const cands = c ? sortedCandidates(c) : [];
 
-  let actions = "";
-  if (phase === "open") {
-    actions = `<button class="btn btn-primary btn-lg btn-block" data-action="close">Close voting</button>`;
-  } else if (phase === "closed") {
-    actions = `<button class="btn btn-primary btn-lg btn-block" data-action="reveal">Show results on screen</button>
-      <div class="row-actions"><button class="btn btn-sm" data-action="reopen">Reopen voting</button>
-      <button class="btn btn-sm" data-action="clear">Show welcome screen</button></div>`;
-  } else {
-    actions = next
-      ? `<button class="btn btn-primary btn-lg btn-block" data-action="open" data-id="${esc(next.id)}">Open voting: ${esc(next.title)}</button>`
-      : `<p class="muted">${count(D.contests) ? "Every position has been run." : "Add positions on the right to get started."}</p>`;
-    if (phase === "revealed") actions += `<div class="row-actions"><button class="btn btn-sm" data-action="clear">Show welcome screen</button></div>`;
-  }
-
-  // Tallies stay hidden from the host until voting closes
-  let tallyHtml = "";
-  if (c && (phase === "closed" || phase === "revealed")) {
-    const t = tally(c, D.votes[cur]);
-    tallyHtml = `<div class="tally">${t.rows.map(r => `
-      <div class="tally-row ${t.leaders.includes(r.id) ? "is-lead" : ""}"><span>${esc(r.name)}</span><b>${r.n}</b>
-        <div class="meter"><span style="width:${t.max ? r.n / t.max * 100 : 0}%"></span></div></div>`).join("")}
-      ${t.abstain ? `<div class="tally-row"><span class="muted">Abstain</span><b class="muted">${t.abstain}</b></div>` : ""}
+  // Speeches -> Voting -> Results for the current position
+  const step = c ? { speeches: 0, open: 1, closed: 1, revealed: 2 }[phase] ?? -1 : -1;
+  const stepper = step < 0 ? "" : `
+    <ol class="stepper">${["Speeches", "Voting", "Results"].map((s, i) => `
+      <li class="${i < step ? "is-done" : ""} ${i === step ? "is-now" : ""}"><span>${i < step ? "✓" : i + 1}</span>${s}</li>`).join("")}
+    </ol>`;
+  const heading = (eyebrow, title) => `
+    <div>
+      <p class="eyebrow">${eyebrow}</p>
+      <h3 class="live-title">${esc(title)}</h3>
     </div>`;
-  }
-
-  const target = phase === "open" ? { id: cur, ...c } : next;
-  const floor = target ? `
-    <form data-form="floor" data-id="${esc(target.id)}" class="field">
-      <span>Floor nomination · ${esc(target.title)}</span>
+  const position = c ? `Position ${list.findIndex(x => x.id === cur) + 1} of ${list.length}` : "";
+  const floor = id => `
+    <form data-form="floor" data-id="${esc(id)}" class="field">
+      <span>Floor nomination</span>
       <div class="cand-row">
         <input class="input draft" data-keep="floor" placeholder="Nominee's name" maxlength="80" autocomplete="off">
         <button class="btn">Add</button>
       </div>
-      <span class="small muted">${phase === "open" ? "Appears on everyone's ballot straight away." : "Added to the ballot before voting opens."}</span>
-    </form>` : "";
+    </form>`;
+  const nextButton = label => next
+    ? `<button class="btn btn-primary btn-lg btn-block" data-action="speeches" data-id="${esc(next.id)}">${label}: ${esc(next.title)}</button>`
+    : "";
 
+  // Between positions (or before the first one)
+  if (!c || phase === "idle") {
+    return `
+      <h2>Live</h2>
+      ${heading(next ? "Up next" : "Welcome screen", next ? next.title : "All positions done")}
+      <p class="small muted">${next
+        ? "The screen is showing the welcome page and check-in QR code."
+        : "Every position has been run."}</p>
+      <div class="live-actions">${nextButton("Start speeches")}</div>
+      ${checkedInStat(checked)}`;
+  }
+
+  if (phase === "speeches") {
+    const speaker = D.state.speaker;
+    return `
+      <h2>Live</h2>
+      ${stepper}
+      ${heading(`${position} · Speeches`, c.title)}
+      <div class="field">
+        <span>Who's speaking? <span class="muted">(shown big on the screen)</span></span>
+        <div class="speaker-list">
+          ${cands.map(k => `<button class="speaker ${speaker === k.id ? "is-on" : ""}" data-action="speaker" data-cid="${esc(k.id)}">${esc(k.name)}</button>`).join("")
+            || `<p class="small muted">No candidates yet. Add them below.</p>`}
+        </div>
+        ${speaker ? `<button class="btn btn-sm" data-action="speaker" data-cid="">Show all candidates</button>` : ""}
+      </div>
+      ${floor(cur)}
+      <div class="live-actions">
+        <button class="btn btn-primary btn-lg btn-block" data-action="open" ${cands.length ? "" : "disabled"}>Open voting</button>
+      </div>
+      <p class="small muted">Phones show the candidates now but can't vote until you open voting.</p>`;
+  }
+
+  if (phase === "open" || phase === "closed") {
+    const pct = checked ? Math.min(100, Math.round(cast / checked * 100)) : 0;
+    const left = Math.max(0, checked - cast);
+    return `
+      <h2>Live</h2>
+      ${stepper}
+      ${heading(`${position} · <span class="live-dot"></span>Voting open`, c.title)}
+      <div class="stats">
+        <div class="stat"><b>${cast}</b><span>votes in</span></div>
+        <div class="stat"><b>${checked}</b><span>checked in</span></div>
+      </div>
+      <div class="meter" aria-hidden="true"><span style="width:${pct}%"></span></div>
+      <p class="small ${left ? "muted" : ""}">${left
+        ? `Results appear automatically once everyone checked in has voted (${left} to go).`
+        : "Everyone has voted. Showing results…"}</p>
+      <div class="live-actions">
+        <button class="btn btn-primary btn-lg btn-block" data-action="reveal">Close voting and show results</button>
+        ${cast === 0 ? `<div class="row-actions"><button class="btn btn-sm" data-action="toSpeeches">Back to speeches</button></div>` : ""}
+      </div>`;
+  }
+
+  // Results
+  const t = tally(c, D.votes[cur]);
+  const name = id => esc(cands.find(k => k.id === id)?.name || "");
+  const outcome = t.winner ? `<p class="outcome">🎉 <b>${name(t.winner)}</b> elected</p>`
+    : t.leaders.length > 1 ? `<p class="outcome is-tie">Tie between ${t.leaders.map(name).join(" and ")}</p>`
+    : `<p class="outcome muted">No votes were cast.</p>`;
   return `
     <h2>Live</h2>
-    <div>
-      <p class="eyebrow">${phase === "open" ? `<span class="live-dot"></span>` : ""}${label}</p>
-      <h3 class="live-title">${c ? esc(c.title) : "Nothing open"}</h3>
+    ${stepper}
+    ${heading(`${position} · Results on screen`, c.title)}
+    ${outcome}
+    <div class="tally">${t.rows.map(r => `
+      <div class="tally-row ${t.leaders.includes(r.id) ? "is-lead" : ""}"><span>${esc(r.name)}</span><b>${r.n}</b>
+        <div class="meter"><span style="width:${t.max ? r.n / t.max * 100 : 0}%"></span></div></div>`).join("")}
+      ${t.abstain ? `<div class="tally-row"><span class="muted">Abstain</span><b class="muted">${t.abstain}</b></div>` : ""}
     </div>
-    <div class="stats">
-      <div class="stat"><b>${cur ? cast : "–"}</b><span>votes in</span></div>
-      <div class="stat"><b>${checked}</b><span>checked in</span></div>
-    </div>
-    <div class="meter" aria-hidden="true"><span style="width:${pct}%"></span></div>
-    ${tallyHtml}
-    <div class="live-actions">${actions}</div>
-    ${floor}`;
+    <div class="live-actions">
+      ${nextButton("Next: start speeches")}
+      <div class="row-actions">
+        <button class="btn btn-sm" data-action="rerun" data-id="${esc(cur)}">Re-run this vote</button>
+        <button class="btn btn-sm ${next ? "" : "btn-primary"}" data-action="clear">Show welcome screen</button>
+      </div>
+    </div>`;
+}
+
+function checkedInStat(checked) {
+  return `<div class="stats"><div class="stat"><b>${checked}</b><span>checked in</span></div><div class="stat"><b>${count(D.codes)}</b><span>codes issued</span></div></div>`;
 }
 
 function contestsHtml() {
-  const list = sortedContests(D.contests);
+  const list = sortedContests(D.contests).filter(c => ROLES.some(r => r.id === c.id));
   const cur = currentId(), phase = phaseOf();
   const cards = list.map((c, i) => {
     const status = statusOf(c);
     const n = votesFor(c.id);
-    const isLive = c.id === cur && phase === "open";
+    const isCurrent = c.id === cur && phase !== "idle";
     const voted = new Set(Object.values(D.votes[c.id] || {}));
     const cands = sortedCandidates(c).map(k => `
       <div class="cand-row">
         <input class="input" data-keep="cand-${esc(c.id)}-${esc(k.id)}" data-edit="candidate" data-id="${esc(c.id)}" data-cid="${esc(k.id)}"
           value="${esc(k.name)}" maxlength="80" aria-label="Candidate name">
         <button class="btn btn-sm" data-action="removeCandidate" data-id="${esc(c.id)}" data-cid="${esc(k.id)}"
-          ${voted.has(k.id) ? `disabled title="Already has votes"` : ""}>Remove</button>
+          ${voted.has(k.id) ? `disabled title="Already has votes"` : ""} aria-label="Remove ${esc(k.name)}">✕</button>
       </div>`).join("");
     return `
       <article class="contest ${c.id === cur ? "is-live" : ""}">
         <div class="contest-head">
           <span class="num">${i + 1}</span>
-          <input class="input" data-keep="title-${esc(c.id)}" data-edit="title" data-id="${esc(c.id)}" value="${esc(c.title)}" maxlength="80" aria-label="Position title">
+          <h3 class="role-title">${esc(c.title)}</h3>
           <span class="badge badge-${status}">${STATUS[status]}${n && status !== "open" ? ` · ${n}` : ""}</span>
         </div>
         <div class="cands">
-          ${cands || `<p class="small muted">No candidates yet.</p>`}
+          ${cands}
           <form data-form="candidate" data-id="${esc(c.id)}" class="cand-row">
-            <input class="input draft" data-keep="new-${esc(c.id)}" placeholder="Add a candidate" maxlength="80" autocomplete="off">
+            <input class="input draft" data-keep="new-${esc(c.id)}" placeholder="Add a candidate's name" maxlength="80" autocomplete="off">
             <button class="btn btn-sm">Add</button>
           </form>
         </div>
         <div class="row-actions">
           <label class="check"><input type="checkbox" data-edit="abstain" data-id="${esc(c.id)}" ${c.allowAbstain ? "checked" : ""}> Allow abstain</label>
           <span class="spacer"></span>
-          <button class="btn btn-sm" data-action="move" data-id="${esc(c.id)}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move up">↑</button>
-          <button class="btn btn-sm" data-action="move" data-id="${esc(c.id)}" data-dir="1" ${i === list.length - 1 ? "disabled" : ""} aria-label="Move down">↓</button>
-          <button class="btn btn-sm btn-danger" data-action="deleteContest" data-id="${esc(c.id)}">Delete</button>
-          ${isLive ? "" : `<button class="btn btn-sm" data-action="open" data-id="${esc(c.id)}">${status === "pending" ? "Open voting" : "Reopen voting"}</button>`}
+          ${isCurrent ? "" : status === "revealed" || status === "closed"
+            ? `<button class="btn btn-sm" data-action="rerun" data-id="${esc(c.id)}">Re-run</button>`
+            : `<button class="btn btn-sm" data-action="speeches" data-id="${esc(c.id)}">Start now</button>`}
         </div>
       </article>`;
   }).join("");
 
   return `
-    <div class="panel-head"><h2>Positions</h2><span class="small muted">Run top to bottom</span></div>
-    ${cards || `<p class="muted">No positions yet.</p>
-      <div><button class="btn btn-sm" data-action="standard">Add President, Vice President, Secretary and Treasurer</button></div>`}
-    <form data-form="contest" class="cand-row">
-      <input class="input draft" data-keep="newContest" placeholder="Add a position, e.g. Events Officer" maxlength="80" autocomplete="off">
-      <button class="btn">Add position</button>
-    </form>`;
+    <div class="panel-head"><h2>Candidates</h2><span class="small muted">Run top to bottom</span></div>
+    <div class="role-grid">${cards || `<p class="muted">Setting up the roles…</p>`}</div>`;
 }
 
 function codesHtml() {
@@ -198,45 +297,47 @@ function codesHtml() {
 // ---- Actions ----
 async function run(fn, ok) {
   try { await fn(); if (ok) toast(ok); }
-  catch (e) { toast(e.message || String(e), true); }
+  catch (e) {
+    toast(isPermissionDenied(e)
+      ? "Firebase refused that change. If the site was just updated, re-publish database.rules.json in the Firebase console."
+      : e.message || String(e), true);
+  }
 }
 
 const actions = {
-  open: id => {
-    const u = { state: { current: id, phase: "open" }, [`contests/${id}/status`]: "open" };
+  // Speeches for a position: the screen shows its candidates, phones see them but can't vote
+  speeches: id => {
+    const u = { state: { current: id, phase: "speeches" }, [`contests/${id}/status`]: "speeches" };
     const prev = currentId();
     if (prev && prev !== id && phaseOf() === "open") u[`contests/${prev}/status`] = "closed";
     return run(() => update(ref(db), u));
   },
-  close: () => run(() => update(ref(db), { "state/phase": "closed", [`contests/${currentId()}/status`]: "closed" })),
-  reveal: () => run(() => update(ref(db), { "state/phase": "revealed", [`contests/${currentId()}/status`]: "revealed" })),
-  reopen: () => run(() => update(ref(db), { "state/phase": "open", [`contests/${currentId()}/status`]: "open" })),
+  speaker: (_id, cid) => run(() => update(ref(db, "state"), { speaker: cid && cid !== D.state.speaker ? cid : null })),
+  open: () => run(() => update(ref(db), { "state/phase": "open", "state/speaker": null, [`contests/${currentId()}/status`]: "open" })),
+  toSpeeches: () => run(() => update(ref(db), { "state/phase": "speeches", [`contests/${currentId()}/status`]: "speeches" })),
+  // Close voting and show the results; the winner is saved so phones can congratulate them too
+  reveal: () => {
+    const cur = currentId();
+    const t = tally(D.contests[cur], D.votes[cur]);
+    return run(() => update(ref(db), {
+      "state/phase": "revealed",
+      "state/speaker": null,
+      [`contests/${cur}/status`]: "revealed",
+      [`contests/${cur}/winner`]: t.winner || (t.leaders.length > 1 ? "tie" : "none")
+    }));
+  },
+  rerun: id => {
+    const c = D.contests[id], n = votesFor(id);
+    if (!confirm(`Re-run the vote for ${c.title}?${n ? ` Its ${n} vote${n === 1 ? "" : "s"} will be deleted.` : ""} It goes back to speeches, so you can remove candidates first if it's a run-off.`)) return;
+    return run(() => update(ref(db), {
+      [`votes/${id}`]: null,
+      [`contests/${id}/winner`]: null,
+      [`contests/${id}/status`]: "speeches",
+      state: { current: id, phase: "speeches" }
+    }));
+  },
   clear: () => run(() => update(ref(db), { state: { phase: "idle" } })),
 
-  standard: () => {
-    const u = {};
-    ["President", "Vice President", "Secretary", "Treasurer"].forEach((title, i) => {
-      u[push(ref(db, "contests")).key] = { title, order: i + 1, allowAbstain: true, status: "pending" };
-    });
-    return run(() => update(ref(db, "contests"), u));
-  },
-  move: (id, _cid, btn) => {
-    const list = sortedContests(D.contests);
-    const i = list.findIndex(c => c.id === id), j = i + Number(btn.dataset.dir);
-    if (!list[j]) return;
-    // Re-number everything so equal or missing orders can't get stuck
-    [list[i], list[j]] = [list[j], list[i]];
-    const u = {};
-    list.forEach((c, k) => { u[`${c.id}/order`] = k + 1; });
-    return run(() => update(ref(db, "contests"), u));
-  },
-  deleteContest: id => {
-    const c = D.contests[id], n = votesFor(id);
-    if (!confirm(`Delete ${c.title}${n ? ` and its ${n} vote${n === 1 ? "" : "s"}` : ""}?`)) return;
-    const u = { [`contests/${id}`]: null, [`votes/${id}`]: null };
-    if (D.state.current === id) u.state = { phase: "idle" };
-    return run(() => update(ref(db), u));
-  },
   removeCandidate: (id, cid) => {
     const name = D.contests[id]?.candidates?.[cid]?.name;
     if (!confirm(`Remove ${name} from ${D.contests[id].title}?`)) return;
@@ -249,23 +350,19 @@ const actions = {
   resetVotes: () => {
     if (prompt("This deletes every vote and puts the screen back to the welcome page. Codes and check-ins are kept.\n\nType RESET to confirm.") !== "RESET") return;
     const u = { votes: null, state: { phase: "idle" } };
-    Object.keys(D.contests).forEach(id => { u[`contests/${id}/status`] = "pending"; });
+    Object.keys(D.contests).forEach(id => { u[`contests/${id}/status`] = "pending"; u[`contests/${id}/winner`] = null; });
     return run(() => update(ref(db), u), "All votes cleared");
   },
   resetAll: () => {
     if (prompt("This deletes every vote, every code and every check-in. Old code slips will stop working.\n\nType RESET to confirm.") !== "RESET") return;
     const u = { votes: null, claims: null, codes: null, state: { phase: "idle" } };
-    Object.keys(D.contests).forEach(id => { u[`contests/${id}/status`] = "pending"; });
+    Object.keys(D.contests).forEach(id => { u[`contests/${id}/status`] = "pending"; u[`contests/${id}/winner`] = null; });
     lastBatch = [];
     return run(() => update(ref(db), u), "Votes, codes and check-ins cleared");
   }
 };
 
 const forms = {
-  contest: (_id, value) => {
-    const order = Math.max(0, ...Object.values(D.contests).map(c => c.order || 0)) + 1;
-    return run(() => push(ref(db, "contests"), { title: value, order, allowAbstain: true, status: "pending" }));
-  },
   candidate: (id, value) => addCandidate(id, value),
   floor: (id, value) => addCandidate(id, value, `${value} added to ${D.contests[id]?.title}`),
   generate: (_id, value) => {
@@ -306,8 +403,7 @@ function saveEdit(el) {
     const live = document.querySelector(`[data-keep="${CSS.escape(key)}"]`) || el;
     const value = live.value.trim();
     if (!value) return;
-    const path = edit === "title" ? `contests/${id}/title` : `contests/${id}/candidates/${cid}/name`;
-    run(() => update(ref(db), { [path]: value }));
+    run(() => update(ref(db), { [`contests/${id}/candidates/${cid}/name`]: value }));
   }, 500);
 }
 

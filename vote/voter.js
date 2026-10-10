@@ -3,6 +3,7 @@ import {
   auth, db, onAuthStateChanged, signInAnonymously, ref, get, set, onValue,
   CODE_RE, normalizeCode, formatCode, esc, sortedCandidates, isPermissionDenied
 } from "./firebase.js";
+import { confetti } from "./confetti.js";
 
 const app = document.getElementById("app");
 const STORE_KEY = "uqsla-agm-code";
@@ -17,7 +18,8 @@ const S = {
   selected: null,
   confirming: false,
   busy: false,
-  error: ""
+  error: "",
+  celebrated: null     // contest id we've already thrown confetti for
 };
 let watching;                    // contest id the listeners below are attached to
 let stopContest = () => {}, stopVote = () => {};
@@ -94,9 +96,9 @@ function enter(code) {
 function watch(id) {
   stopContest(); stopVote();
   watching = id;
-  Object.assign(S, { contest: null, myVote: id ? undefined : null, selected: null, confirming: false, error: "" });
+  Object.assign(S, { contest: null, contestLoaded: false, myVote: id ? undefined : null, selected: null, confirming: false, error: "" });
   if (!id) return;
-  stopContest = onValue(ref(db, `contests/${id}`), s => { S.contest = s.val(); render(); });
+  stopContest = onValue(ref(db, `contests/${id}`), s => { S.contest = s.val(); S.contestLoaded = true; render(); });
   stopVote = onValue(ref(db, `votes/${id}/${S.code}`), s => { S.myVote = s.val(); render(); });
 }
 
@@ -125,12 +127,51 @@ function render() {
   if (!st.current || phase === "idle") {
     return screenWait("You're checked in", "Voting opens here when the next position is called. Keep this page open. It updates by itself.");
   }
+  if (S.contestLoaded && !S.contest) {
+    return screenWait("You're checked in", "Voting opens here when the next position is called. Keep this page open. It updates by itself.");
+  }
   if (!S.contest || S.myVote === undefined) return show(`<div class="spinner" aria-label="Loading"></div>`);
+  if (phase === "speeches") return screenSpeeches();
+  if (phase === "revealed") return screenResult();
   if (S.myVote) return screenDone();
   if (phase !== "open") {
     return screenWait(`Voting for ${S.contest.title} has closed`, "Results will be shown on the main screen. The next vote will appear here automatically.");
   }
   screenBallot();
+}
+
+function screenSpeeches() {
+  const speaker = S.state.speaker;
+  show(`
+    <section class="screen center">
+      <p class="eyebrow">Up next</p>
+      <h1 class="contest-title">${esc(S.contest.title)}</h1>
+      <p class="hint">Candidate speeches are on now. Voting opens on this page straight after.</p>
+      <ul class="speech-list">
+        ${sortedCandidates(S.contest).map(k => `
+          <li class="${k.id === speaker ? "is-speaking" : ""}">${esc(k.name)}${k.id === speaker ? `<span class="badge badge-open">Speaking</span>` : ""}</li>`).join("")}
+      </ul>
+      ${codeChip()}
+    </section>`);
+}
+
+function screenResult() {
+  const c = S.contest;
+  const winner = sortedCandidates(c).find(k => k.id === c.winner);
+  if (winner) {
+    show(`
+      <section class="screen center">
+        <p class="eyebrow">${esc(c.title)} · Elected</p>
+        <p class="congrats-line">Congratulations</p>
+        <h1 class="congrats-name">${esc(winner.name)}</h1>
+        <p class="hint">${S.myVote ? "Your vote was counted. " : ""}The next position will appear here when it's called.</p>
+        ${codeChip()}
+      </section>`);
+    if (S.celebrated !== watching) { S.celebrated = watching; confetti({ count: 90 }); }
+    return;
+  }
+  screenWait(c.winner === "tie" ? `It's a tie for ${c.title}` : `Voting for ${c.title} has closed`,
+    c.winner === "tie" ? "The exec will explain what happens next. Keep this page open." : "The next position will appear here when it's called.");
 }
 
 function show(html) { app.innerHTML = html; }
