@@ -551,4 +551,4 @@ body.screen-page.hide-cursor { cursor: none; }
 }
 
 /* Access-code field on the host and screen gates */
-.key-input { font-family: var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.key-input { font-family: var(--mono); letter-spacing: 0.04em; }

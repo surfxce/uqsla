@@ -80,11 +80,12 @@ export function tally(contest, votes) {
 }
 
 // ---- Access-code gate shared by the host and screen pages ----
-// Execs unlock a page with a 16-character code stored under hostKeys in the database
-// (which no client can read). The rules check the code on every request, so deleting
-// it in the console locks out every browser that used it.
-export const KEY_RE = /^[A-HJ-NP-Z2-9]{16}$/;
-const formatKey = k => k.match(/.{1,4}/g)?.join("-") ?? "";
+// Execs unlock a page with a passphrase of 3+ words stored under hostKeys in the database
+// (which no client can read). The rules check it on every request, so deleting it in the
+// console locks out every browser that used it. Keep KEY_RE in sync with database.rules.json.
+export const KEY_RE = /^[a-z0-9]+(-[a-z0-9]+)(-[a-z0-9]+)+$/;
+// "Mango Anchor  velvet-tide" -> "mango-anchor-velvet-tide"
+export const normalizeKey = s => String(s || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join("-");
 
 export function accessGate(mount, role, onReady) {
   let admitted = false;
@@ -125,8 +126,8 @@ export function accessGate(mount, role, onReady) {
         <p class="hint">${role === "host" ? "Enter the host code." : "Enter the screen code."}</p>
         <form id="gateForm" novalidate>
           <div class="cand-row">
-            <input class="input key-input" id="gateKey" type="password" placeholder="XXXX-XXXX-XXXX-XXXX"
-              autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Access code" aria-describedby="gateErr">
+            <input class="input key-input" id="gateKey" type="password" placeholder="e.g. three random words"
+              autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Access code" aria-describedby="gateErr">
             <button type="button" class="btn btn-sm" id="gateShow">Show</button>
           </div>
           <p class="error" id="gateErr" role="alert">${esc(message)}</p>
@@ -142,13 +143,12 @@ export function accessGate(mount, role, onReady) {
       input.type = hidden ? "text" : "password";
       e.target.textContent = hidden ? "Hide" : "Show";
     };
-    input.addEventListener("input", () => { input.value = formatKey(normalizeCode(input.value).slice(0, 16)); });
     input.focus({ preventScroll: true });
 
     form.onsubmit = async e => {
       e.preventDefault();
-      const key = normalizeCode(input.value);
-      if (!KEY_RE.test(key)) { err.textContent = "Access codes are 16 letters and numbers."; return; }
+      const key = normalizeKey(input.value);
+      if (!KEY_RE.test(key) || key.length < 12 || key.length > 64) { err.textContent = "Access codes are at least three words."; return; }
       if (!auth.currentUser) { err.textContent = "Still connecting. Try again in a moment."; return; }
       btn.disabled = true; btn.textContent = "Checking…"; err.textContent = "";
       // The rules only accept the session if the role matches the code, so try the roles this page allows

@@ -16,15 +16,18 @@ All in the [Firebase console](https://console.firebase.google.com/project/uqsla-
 2. **Turn on Anonymous sign-in.** Authentication → Sign-in method → Anonymous → Enable.
    Every phone, the host laptop and the projector sign in anonymously; the codes decide what each one can do.
    Email/Password isn't used.
-3. **Make the two access codes.** Run this on your computer. It prints two random 16-character codes:
+3. **Make the two access codes.** Each code is **three or more random words**, lowercase, joined by hyphens,
+   for example `mango-anchor-velvet-tide`. Pick unrelated words (not a phrase, and nothing about UQSLA or the AGM),
+   or let your Mac pick them:
 
    ```bash
-   python3 -c "import secrets; a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; [print(r, ''.join(secrets.choice(a) for _ in range(16))) for r in ('host', 'screen')]"
+   python3 -c "import secrets; w=[l.strip().lower() for l in open('/usr/share/dict/words') if l.strip().isalpha() and 4<=len(l.strip())<=7]; [print(r, '-'.join(secrets.choice(w) for _ in range(4))) for r in ('host', 'screen')]"
    ```
 
    In Realtime Database → Data, add a child called `hostKeys`, and under it one entry per code:
-   the **name** is the code, the **value** is `host` or `screen`. For example `hostKeys` → `<your host code>` → `host`. Never reuse a code that has appeared anywhere public.
-   Codes must be exactly 16 characters from that alphabet (no I, O, 0 or 1), entered without dashes.
+   the **name** is the code, the **value** is `host` or `screen`. For example `hostKeys` → `<your host code>` → `host`.
+   Type the name in lowercase with hyphens between words. On the gate page, capitals and spaces are fine.
+   Never reuse a code that has appeared anywhere public.
 4. **Authorised domains.** Authentication → Settings → Authorised domains → add your custom domain and `surfxce.github.io`.
 
 The `apiKey` in `vote/firebase.js` is a public identifier, not a password. The rules are what protect the data.

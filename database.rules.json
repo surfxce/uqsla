@@ -10,7 +10,7 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid && (!newData.exists() || root.child('hostKeys').child(newData.child('key').val()).val() === newData.child('role').val())",
         ".validate": "newData.hasChildren(['key', 'role'])",
-        "key": { ".validate": "newData.isString() && newData.val().matches(/^[A-HJ-NP-Z2-9]{16}$/)" },
+        "key": { ".validate": "newData.isString() && newData.val().length >= 12 && newData.val().length <= 64 && newData.val().matches(/^[a-z0-9]+(-[a-z0-9]+)(-[a-z0-9]+)+$/)" },
         "role": { ".validate": "newData.val() === 'host' || newData.val() === 'screen'" },
         "$other": { ".validate": false }
       }
