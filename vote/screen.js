@@ -84,7 +84,7 @@ function render() {
   } else if (phase === "revealed") {
     const t = tally(c, D.votes[cur]);
     const winner = t.rows.find(r => r.id === t.winner);
-    sig = JSON.stringify(["revealed", cur, c.title, t.rows, t.abstain]);
+    sig = JSON.stringify(["revealed", cur, c.title, t.rows]);
     celebrate = !!winner;
     const hero = winner ? `
       <p class="eyebrow">${esc(c.title)} · Elected</p>
@@ -149,7 +149,7 @@ function updateNumbers(cur) {
 }
 
 function chartHtml(c, t) {
-  if (!t.total) return `<p class="s-sub">No votes were cast.</p>`;
+  if (!t.valid) return `<p class="s-sub">No votes were cast.</p>`;
   const tie = t.leaders.length > 1;
   const rows = t.rows.map((r, i) => {
     const lead = t.leaders.includes(r.id);
@@ -162,16 +162,10 @@ function chartHtml(c, t) {
         <div class="bar-val">${r.n}<span>${pct}%</span></div>
       </div>`;
   }).join("");
-  const abstain = c.allowAbstain || t.abstain ? `
-    <div class="bar-row is-abstain" style="--w:${t.max ? Math.min(100, t.abstain / t.max * 100) : 0}%;--d:${(t.rows.length * 0.12).toFixed(2)}s">
-      <div class="bar-name">Abstain</div>
-      <div class="bar-track"><div class="bar"></div></div>
-      <div class="bar-val">${t.abstain}</div>
-    </div>` : "";
-  const label = t.rows.map(r => `${r.name} ${r.n}`).join(", ") + (t.abstain ? `, abstain ${t.abstain}` : "");
+  const label = t.rows.map(r => `${r.name} ${r.n}`).join(", ");
   return `
-    <div class="chart compact" role="img" aria-label="${esc(`Results for ${c.title}: ${label}`)}">${rows}${abstain}</div>
-    <p class="chart-note">${t.valid} vote${t.valid === 1 ? "" : "s"} for candidates${t.abstain ? ` · ${t.abstain} abstained` : ""} · percentages exclude abstentions</p>`;
+    <div class="chart compact" role="img" aria-label="${esc(`Results for ${c.title}: ${label}`)}">${rows}</div>
+    <p class="chart-note">${t.valid} vote${t.valid === 1 ? "" : "s"}</p>`;
 }
 
 // ---- Projector niceties: F for full screen, hide an idle cursor ----

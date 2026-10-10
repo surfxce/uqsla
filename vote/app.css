@@ -244,7 +244,6 @@ a { color: var(--gold-ink); }
 .choice.is-on { border-color: var(--gold); background: var(--gold-wash); }
 .choice.is-on .dot { border-color: var(--gold); }
 .choice.is-on .dot::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--gold); }
-.choice-abstain { margin-top: 6px; border-style: dashed; background: transparent; color: var(--ink-2); font-weight: 500; }
 .empty { padding: 20px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); text-align: center; }
 
 .action-bar {
@@ -530,11 +529,6 @@ body.screen-page.hide-cursor { cursor: none; }
 }
 .tag-tie { background: transparent; border: 1px solid var(--gold); color: var(--gold-ink); }
 @keyframes fade-in { from { opacity: 0; transform: translateY(0.3em); } }
-/* Same font size as the other rows so the em-based columns line up; only the text shrinks */
-.bar-row.is-abstain { color: var(--ink-2); margin-top: 0.3em; padding-top: 0.7em; border-top: 1px solid var(--line); }
-.bar-row.is-abstain .bar-name, .bar-row.is-abstain .bar-val { font-size: 0.75em; }
-.bar-row.is-abstain .bar-track { height: 0.9em; }
-.bar-row.is-abstain .bar { background: repeating-linear-gradient(135deg, #5b6b82 0 4px, transparent 4px 8px); }
 .chart-note { margin-top: 1.4em; color: var(--muted); font-size: 1.1em; }
 
 .fs-hint {

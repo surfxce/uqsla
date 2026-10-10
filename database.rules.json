@@ -33,7 +33,6 @@
         ".validate": "newData.hasChild('title')",
         "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
         "order": { ".validate": "newData.isNumber()" },
-        "allowAbstain": { ".validate": "newData.isBoolean()" },
         "status": { ".validate": "newData.isString() && newData.val().matches(/^(pending|speeches|open|closed|revealed)$/)" },
         "winner": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{1,40}$/)" },
         "candidates": {
@@ -72,7 +71,7 @@
       "$contest": {
         "$code": {
           ".read": "auth != null && root.child('claims').child($code).val() === auth.uid",
-          ".write": "auth != null && !data.exists() && root.child('claims').child($code).val() === auth.uid && root.child('state/current').val() === $contest && root.child('state/phase').val() === 'open' && ((newData.val() === 'abstain' && root.child('contests').child($contest).child('allowAbstain').val() === true) || root.child('contests').child($contest).child('candidates').child(newData.val()).child('name').exists())",
+          ".write": "auth != null && !data.exists() && root.child('claims').child($code).val() === auth.uid && root.child('state/current').val() === $contest && root.child('state/phase').val() === 'open' && root.child('contests').child($contest).child('candidates').child(newData.val()).child('name').exists()",
           ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{1,40}$/)"
         }
       }

@@ -231,14 +231,13 @@ function codeChip() {
 function screenBallot() {
   const c = S.contest;
   const cands = sortedCandidates(c);
-  if (S.selected && S.selected !== "abstain" && !cands.some(k => k.id === S.selected)) S.selected = null;
-  if (S.selected === "abstain" && !c.allowAbstain) S.selected = null;
+  if (S.selected && !cands.some(k => k.id === S.selected)) S.selected = null;
   const option = (id, name, cls = "") => `
     <button type="button" class="choice ${cls} ${S.selected === id ? "is-on" : ""}" role="radio"
       aria-checked="${S.selected === id}" data-id="${esc(id)}">
       <span class="dot"></span><span>${esc(name)}</span>
     </button>`;
-  const chosenName = S.selected === "abstain" ? "Abstain" : cands.find(k => k.id === S.selected)?.name;
+  const chosenName = cands.find(k => k.id === S.selected)?.name;
 
   show(`
     <section class="screen">
@@ -247,7 +246,6 @@ function screenBallot() {
       <p class="hint">Choose one. You can't change your vote after you submit it.</p>
       <div class="choices" role="radiogroup" aria-label="${esc(c.title)}">
         ${cands.length ? cands.map(k => option(k.id, k.name)).join("") : `<p class="empty">Candidates are being added…</p>`}
-        ${c.allowAbstain ? option("abstain", "Abstain", "choice-abstain") : ""}
       </div>
       <p class="error" role="alert">${esc(S.error)}</p>
       <div class="action-bar">

@@ -46,11 +46,12 @@ async function ensureRoles() {
     const existing = D.contests[r.id];
     if (!existing) {
       const match = strays.find(([, c]) => norm(c.title) === norm(r.title));
-      u[`contests/${r.id}`] = { title: r.title, order: i + 1, allowAbstain: true, status: "pending",
+      u[`contests/${r.id}`] = { title: r.title, order: i + 1, status: "pending",
         ...(match?.[1].candidates ? { candidates: match[1].candidates } : {}) };
     } else {
       if (existing.title !== r.title) u[`contests/${r.id}/title`] = r.title;
       if (existing.order !== i + 1) u[`contests/${r.id}/order`] = i + 1;
+      if ("allowAbstain" in existing) u[`contests/${r.id}/allowAbstain`] = null;   // abstaining isn't allowed
     }
   });
   for (const [id] of strays) { u[`contests/${id}`] = null; u[`votes/${id}`] = null; }
@@ -208,7 +209,6 @@ function liveHtml() {
     <div class="tally">${t.rows.map(r => `
       <div class="tally-row ${t.leaders.includes(r.id) ? "is-lead" : ""}"><span>${esc(r.name)}</span><b>${r.n}</b>
         <div class="meter"><span style="width:${t.max ? r.n / t.max * 100 : 0}%"></span></div></div>`).join("")}
-      ${t.abstain ? `<div class="tally-row"><span class="muted">Abstain</span><b class="muted">${t.abstain}</b></div>` : ""}
     </div>
     <div class="live-actions">
       ${nextButton("Next: start speeches")}
@@ -253,7 +253,6 @@ function contestsHtml() {
           </form>
         </div>
         <div class="row-actions">
-          <label class="check"><input type="checkbox" data-edit="abstain" data-id="${esc(c.id)}" ${c.allowAbstain ? "checked" : ""}> Allow abstain</label>
           <span class="spacer"></span>
           ${isCurrent ? "" : status === "revealed" || status === "closed"
             ? `<button class="btn btn-sm" data-action="rerun" data-id="${esc(c.id)}">Re-run</button>`
@@ -392,11 +391,10 @@ function addCandidate(contestId, name, ok) {
   return run(() => push(ref(db, `contests/${contestId}/candidates`), { name, order: Math.max(0, ...orders) + 1 }), ok);
 }
 
-// Text edits save shortly after typing stops; the checkbox saves immediately
+// Candidate name edits save shortly after typing stops
 const timers = {};
 function saveEdit(el) {
   const { edit, id, cid } = el.dataset;
-  if (edit === "abstain") return run(() => update(ref(db, `contests/${id}`), { allowAbstain: el.checked }));
   const key = el.dataset.keep;
   clearTimeout(timers[key]);
   timers[key] = setTimeout(() => {
@@ -420,8 +418,7 @@ main.addEventListener("submit", e => {
   if (input.classList.contains("draft") && form.dataset.form !== "generate") input.value = "";
   forms[form.dataset.form]?.(form.dataset.id, value);
 });
-main.addEventListener("input", e => { if (e.target.dataset.edit && e.target.type !== "checkbox") saveEdit(e.target); });
-main.addEventListener("change", e => { if (e.target.dataset.edit === "abstain") saveEdit(e.target); });
+main.addEventListener("input", e => { if (e.target.dataset.edit) saveEdit(e.target); });
 
 // ---- Printing code slips ----
 function printCodes(codes) {

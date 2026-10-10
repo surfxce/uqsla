@@ -66,17 +66,13 @@ export const sortedCandidates = contest =>
 // Vote counts for one position: candidates sorted by votes (ties keep ballot order)
 export function tally(contest, votes) {
   const counts = {};
-  let abstain = 0;
-  for (const v of Object.values(votes || {})) {
-    if (v === "abstain") abstain++;
-    else counts[v] = (counts[v] || 0) + 1;
-  }
+  for (const v of Object.values(votes || {})) counts[v] = (counts[v] || 0) + 1;
   const rows = sortedCandidates(contest).map(k => ({ id: k.id, name: k.name, n: counts[k.id] || 0 }));
   rows.sort((a, b) => b.n - a.n);
   const valid = rows.reduce((s, r) => s + r.n, 0);
   const max = rows.length ? rows[0].n : 0;
   const leaders = max > 0 ? rows.filter(r => r.n === max).map(r => r.id) : [];
-  return { rows, abstain, valid, total: valid + abstain, max, leaders, winner: leaders.length === 1 ? leaders[0] : null };
+  return { rows, valid, max, leaders, winner: leaders.length === 1 ? leaders[0] : null };
 }
 
 // ---- Access-code gate shared by the host and screen pages ----
